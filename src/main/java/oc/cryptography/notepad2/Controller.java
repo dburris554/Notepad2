@@ -5,13 +5,26 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TextInputDialog;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
-import java.io.*;
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.security.spec.KeySpec;
 import java.util.Arrays;
 
 public class Controller {
@@ -32,6 +45,7 @@ public class Controller {
 
     static final byte ENCRYPTED_TAG =   (byte)0xA5;
     static final byte UNENCRYPTED_TAG = (byte)0xFF;
+    static final String SALT = "Orange";
 
     void setStage(Stage stage) {
         this.stage = stage;
@@ -53,7 +67,6 @@ public class Controller {
                 handleSavingFile(file);
             } catch (IOException e) {
                 new Alert(Alert.AlertType.ERROR, "Error saving file. Aborting.").showAndWait();
-                return;
             }
         }
     }
@@ -75,21 +88,46 @@ public class Controller {
         dialog.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text File","*.txt"));
         File file = dialog.showSaveDialog(stage);
         if (file != null) {
-            handleSavingEncryptedFile(file);
+            try {
+                handleSavingEncryptedFile(file);
+            } catch (GeneralSecurityException | IOException e) {
+                new Alert(Alert.AlertType.ERROR, "Error saving file. Aborting.").showAndWait();
+            }
         }
     }
 
-    private void handleSavingEncryptedFile(File file) {
-        //TODO Use a TextInputDialog to get a Password
+    private void handleSavingEncryptedFile(File file) throws GeneralSecurityException, IOException {
+        TextInputDialog passwordDialog = new TextInputDialog();
+        passwordDialog.setHeaderText("Provide a Password");
+        String password;
+        try {
+            password = passwordDialog.showAndWait()
+                    .orElseThrow(() -> new IllegalArgumentException("Error handling password. Aborting."));
+        } catch (IllegalArgumentException e) {
+            new Alert(Alert.AlertType.ERROR, e.getMessage()).showAndWait();
+            return;
+        }
 
-        //TODO Create IV
-        //TODO Initialize Cipher object
-        //TODO Create output byte array with tag (buffer?)
-        //TODO Append SHA-256 hash of password
-        //TODO Append encrypted text area text as bytes
+        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        KeySpec spec = new PBEKeySpec(password.toCharArray(), SALT.getBytes(), 54321, 256);
+        SecretKey key = new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");
 
-        //TODO Write bytes into file and close
+        ByteBuffer ivBuffer = ByteBuffer.allocate(16);
+        new SecureRandom().nextBytes(ivBuffer.array());
 
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(ivBuffer.array()));
+
+        ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+        byteStream.write(ENCRYPTED_TAG);
+        byteStream.writeBytes(MessageDigest.getInstance("SHA-256").digest(password.getBytes()));
+        byteStream.writeBytes(ivBuffer.array());
+        byteStream.writeBytes(cipher.doFinal(textArea.getText().getBytes()));
+
+        FileOutputStream fileStream = new FileOutputStream(file);
+        byteStream.writeTo(fileStream);
+        byteStream.close();
+        fileStream.close();
     }
 
     @FXML
@@ -101,26 +139,46 @@ public class Controller {
         if (file != null) {
             try {
                 handleOpeningFile(file);
-            } catch (IOException e) {
+            } catch (GeneralSecurityException | IOException e) {
                 new Alert(Alert.AlertType.ERROR, "Error opening file. Aborting.").showAndWait();
-                return;
             }
         }
     }
 
-    private void handleOpeningFile(File file) throws IOException {
+    private void handleOpeningFile(File file) throws GeneralSecurityException, IOException {
         FileInputStream fileStream = new FileInputStream(file);
         ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 
         byte tag = (byte)fileStream.read();
 
         if (tag == ENCRYPTED_TAG) {
-            //TODO Request and store password
-            //TODO Read and store next 32 bytes as password hash
-            //TODO If provided password hashes to same value,
-                //TODO Decrypt and append remaining bytes
-            //TODO else, open an Alert stating password was incorrect and the operation was aborted
-            //TODO return
+            TextInputDialog passwordDialog = new TextInputDialog();
+            passwordDialog.setHeaderText("Enter the Password");
+            String password;
+            try {
+                password = passwordDialog.showAndWait()
+                        .orElseThrow(() -> new IllegalArgumentException("Error handling password. Aborting."));
+            } catch (IllegalArgumentException e) {
+                new Alert(Alert.AlertType.ERROR, e.getMessage()).showAndWait();
+                return;
+            }
+            byte[] storedHash = fileStream.readNBytes(32);
+            byte[] currentHash = MessageDigest.getInstance("SHA-256").digest(password.getBytes());
+
+            if (Arrays.compare(storedHash, currentHash) == 0) {
+                SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+                KeySpec spec = new PBEKeySpec(password.toCharArray(), SALT.getBytes(), 54321, 256);
+                SecretKey key = new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");
+
+                byte[] iv = fileStream.readNBytes(16);
+
+                Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
+                byteStream.writeBytes(cipher.doFinal(fileStream.readAllBytes()));
+            } else {
+                new Alert(Alert.AlertType.ERROR, "Password Incorrect. Aborting.").showAndWait();
+                return;
+            }
         } else {
             byteStream.writeBytes(fileStream.readAllBytes());
         }
@@ -130,5 +188,4 @@ public class Controller {
         textArea.setText(byteStream.toString());
         byteStream.close();
     }
-
 }
