@@ -3,7 +3,6 @@ package oc.cryptography.notepad2;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
-import javafx.scene.control.MenuItem;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextInputDialog;
 import javafx.stage.FileChooser;
@@ -23,7 +22,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
 import java.security.spec.KeySpec;
 import java.util.Arrays;
 
@@ -33,16 +34,6 @@ public class Controller {
     private TextArea textArea;
 
     Stage stage;
-
-    @FXML
-    private MenuItem openOption;
-
-    @FXML
-    private MenuItem saveOption;
-
-    @FXML
-    private MenuItem encryptedSaveOption;
-
     static final byte ENCRYPTED_TAG =   (byte)0xA5;
     static final byte UNENCRYPTED_TAG = (byte)0xFF;
     static final String SALT = "Orange";
@@ -97,21 +88,11 @@ public class Controller {
     }
 
     private void handleSavingEncryptedFile(File file) throws GeneralSecurityException, IOException {
-        TextInputDialog passwordDialog = new TextInputDialog();
-        passwordDialog.setHeaderText("Provide a Password");
-        String password;
-        try {
-            password = passwordDialog.showAndWait()
-                    .orElseThrow(() -> new IllegalArgumentException("Error handling password. Aborting."));
-        } catch (IllegalArgumentException e) {
-            new Alert(Alert.AlertType.ERROR, e.getMessage()).showAndWait();
+        String password = getPasswordFromUser();
+        if (password == null) {
             return;
         }
-
-        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-        KeySpec spec = new PBEKeySpec(password.toCharArray(), SALT.getBytes(), 54321, 256);
-        SecretKey key = new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");
-
+        SecretKey key = generateSecretKey(password);
         ByteBuffer ivBuffer = ByteBuffer.allocate(16);
         new SecureRandom().nextBytes(ivBuffer.array());
 
@@ -128,6 +109,26 @@ public class Controller {
         byteStream.writeTo(fileStream);
         byteStream.close();
         fileStream.close();
+    }
+
+    private SecretKey generateSecretKey(String password) throws NoSuchAlgorithmException, InvalidKeySpecException {
+        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        KeySpec spec = new PBEKeySpec(password.toCharArray(), SALT.getBytes(), 54321, 256);
+        return new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");
+    }
+
+    private String getPasswordFromUser() {
+        TextInputDialog passwordDialog = new TextInputDialog();
+        passwordDialog.setHeaderText("Enter Password");
+        String password;
+        try {
+            password = passwordDialog.showAndWait()
+                    .orElseThrow(() -> new IllegalArgumentException("Error handling password. Aborting."));
+        } catch (IllegalArgumentException e) {
+            new Alert(Alert.AlertType.ERROR, e.getMessage()).showAndWait();
+            return null;
+        }
+        return password;
     }
 
     @FXML
@@ -148,27 +149,18 @@ public class Controller {
     private void handleOpeningFile(File file) throws GeneralSecurityException, IOException {
         FileInputStream fileStream = new FileInputStream(file);
         ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-
         byte tag = (byte)fileStream.read();
 
         if (tag == ENCRYPTED_TAG) {
-            TextInputDialog passwordDialog = new TextInputDialog();
-            passwordDialog.setHeaderText("Enter the Password");
-            String password;
-            try {
-                password = passwordDialog.showAndWait()
-                        .orElseThrow(() -> new IllegalArgumentException("Error handling password. Aborting."));
-            } catch (IllegalArgumentException e) {
-                new Alert(Alert.AlertType.ERROR, e.getMessage()).showAndWait();
+            String password = getPasswordFromUser();
+            if (password == null) {
                 return;
             }
             byte[] storedHash = fileStream.readNBytes(32);
             byte[] currentHash = MessageDigest.getInstance("SHA-256").digest(password.getBytes());
 
             if (Arrays.compare(storedHash, currentHash) == 0) {
-                SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-                KeySpec spec = new PBEKeySpec(password.toCharArray(), SALT.getBytes(), 54321, 256);
-                SecretKey key = new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");
+                SecretKey key = generateSecretKey(password);
 
                 byte[] iv = fileStream.readNBytes(16);
 
