@@ -10,6 +10,7 @@ FXML references were:
 	https://openjfx.io/javadoc/17/
 
 Java API suggestions came from:
+    https://docs.oracle.com/en/java/javase/11/docs/api/
 	https://docs.oracle.com/en/java/javase/11/docs/api/java.base/javax/crypto/package-summary.html
 	
 Cryptographic API information came from:
