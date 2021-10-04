@@ -19,6 +19,7 @@
            <MenuItem mnemonicParsing="false" onAction="#clearTextArea" text="New" />
                <MenuItem fx:id="openOption" mnemonicParsing="false" onAction="#openTextFile" text="Open..." />
                <MenuItem fx:id="saveOption" mnemonicParsing="false" onAction="#openSaveDialog" text="Save As..." />
+               <MenuItem fx:id="encryptedSaveOption" mnemonicParsing="false" onAction="#openEncryptedSaveDialog" text="Encrypted Save As..." />
          </items>
        </Menu>
      </menus>
