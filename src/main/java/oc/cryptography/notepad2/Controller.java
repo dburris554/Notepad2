@@ -22,6 +22,12 @@ public class Controller {
     @FXML
     private MenuItem saveOption;
 
+    @FXML
+    private MenuItem encryptedSaveOption;
+
+    static final int ENCRYPTED_TAG = 0xA5;
+    static final int UNENCRYPTED_TAG = 0xFF;
+
     void setStage(Stage stage) {
         this.stage = stage;
     }
@@ -35,7 +41,7 @@ public class Controller {
     void openSaveDialog(ActionEvent event) {
         FileChooser dialog = new FileChooser();
         dialog.setTitle("Save Text File");
-        dialog.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text Files","*.txt"));
+        dialog.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text File","*.txt"));
         File file = dialog.showSaveDialog(stage);
         if (file != null) {
             handleSavingFile(file);
@@ -43,8 +49,36 @@ public class Controller {
     }
 
     private void handleSavingFile(File file) {
-        //TODO
+        //TODO Create output byte array with tag (buffer?)
+
+        //TODO Append text area text as a byte array
         textArea.getText();
+
+        //TODO Write bytes into file and close
+    }
+
+    @FXML
+    void openEncryptedSaveDialog(ActionEvent event) {
+        FileChooser dialog = new FileChooser();
+        dialog.setTitle("Save Encrypted Text File");
+        dialog.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text File","*.txt"));
+        File file = dialog.showSaveDialog(stage);
+        if (file != null) {
+            handleSavingEncryptedFile(file);
+        }
+    }
+
+    private void handleSavingEncryptedFile(File file) {
+        //TODO Use a TextInputDialog to get a Password
+
+        //TODO Create IV
+        //TODO Initialize Cipher object
+        //TODO Create output byte array with tag (buffer?)
+        //TODO Append SHA-256 hash of password
+        //TODO Append encrypted text area text as bytes
+
+        //TODO Write bytes into file and close
+
     }
 
     @FXML
@@ -59,7 +93,23 @@ public class Controller {
     }
 
     private void handleOpeningFile(File file) {
-        //TODO
+        //TODO Create FileInputStream from file
+
+        //TODO Create empty byte array for textArea content (buffer?)
+
+        //TODO Read first byte to see if encrypted
+
+        //TODO If encrypted,
+            //TODO Request and store password
+            //TODO Read and store next 32 bytes as password hash
+            //TODO If provided password hashes to same value,
+                //TODO Decrypt and append remaining bytes
+            //TODO else, open an Alert stating password was incorrect and the operation was aborted
+                //TODO return
+
+        //TODO else, append bytes into byte array
+
+        //TODO Write byte array into textArea
     }
 
 }
